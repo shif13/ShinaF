@@ -1,5 +1,5 @@
 // ============================================
-// FILE: src/pages/Login.jsx
+// FILE: src/pages/Login.jsx - UPDATED VERSION
 // ============================================
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
@@ -7,6 +7,7 @@ import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import client from '../api/client';
 import { useAuthStore } from '../store/authStore';
+import { useCartStore } from '../store/cartStore';
 import Container from '../components/ui/Container';
 import Section from '../components/ui/Section';
 import Input from '../components/common/Input';
@@ -16,6 +17,7 @@ const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuthStore();
+  const { syncCart } = useCartStore();
   
   const [formData, setFormData] = useState({
     email: '',
@@ -30,7 +32,6 @@ const Login = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
@@ -54,48 +55,49 @@ const Login = () => {
   };
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  
-  if (!validate()) return;
-  
-  setLoading(true);
-  
-  try {
-    const response = await client.post('/auth/login', formData);
+    e.preventDefault();
     
-    if (response.data.success) {
-      const { user, accessToken } = response.data.data;
+    if (!validate()) return;
+    
+    setLoading(true);
+    
+    try {
+      const response = await client.post('/auth/login', formData);
       
-      // Save to auth store (which also saves to localStorage)
-      login(user, accessToken);
-      
-      toast.success(`Welcome back, ${user.firstName}!`);
-      
-      // Redirect based on user role
-      if (user.role === 'ADMIN') {
-        navigate('/admin', { replace: true });
-      } else {
-        // Regular users: redirect to previous page or home
-        navigate(from, { replace: true });
+      if (response.data.success) {
+        const { user, accessToken, refreshToken } = response.data.data;
+        
+        // Save to auth store (which also saves to localStorage)
+        login(user, accessToken, refreshToken);
+        
+        // IMPORTANT: Sync cart immediately after login
+        await syncCart(user.id);
+        
+        toast.success(`Welcome back, ${user.firstName}!`);
+        
+        // Redirect based on user role
+        if (user.role === 'ADMIN') {
+          navigate('/admin', { replace: true });
+        } else {
+          navigate(from, { replace: true });
+        }
       }
+    } catch (error) {
+      console.error('Login error:', error);
+      const message = error.response?.data?.message || 'Login failed. Please try again.';
+      toast.error(message);
+      
+      if (error.response?.data?.errors) {
+        const fieldErrors = {};
+        error.response.data.errors.forEach(err => {
+          fieldErrors[err.field] = err.message;
+        });
+        setErrors(fieldErrors);
+      }
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error('Login error:', error);
-    const message = error.response?.data?.message || 'Login failed. Please try again.';
-    toast.error(message);
-    
-    // Set field-specific errors if available
-    if (error.response?.data?.errors) {
-      const fieldErrors = {};
-      error.response.data.errors.forEach(err => {
-        fieldErrors[err.field] = err.message;
-      });
-      setErrors(fieldErrors);
-    }
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   return (
     <Section className="min-h-screen flex items-center justify-center bg-gradient-to-br from-cream-100 via-cream-50 to-terracotta-50">

@@ -1,4 +1,4 @@
-// src/pages/Shop.jsx
+// src/pages/Shop.jsx - UPDATED WITH WISHLIST STATE
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { 
@@ -7,6 +7,7 @@ import {
 import toast from 'react-hot-toast';
 import client from '../api/client';
 import { useCartStore } from '../store/cartStore';
+import { useAuthStore } from '../store/authStore';
 import Container from '../components/ui/Container';
 import Section from '../components/ui/Section';
 import Button from '../components/common/Button';
@@ -23,6 +24,9 @@ const Shop = () => {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [viewMode, setViewMode] = useState('grid');
   const [addingToCart, setAddingToCart] = useState({});
+  
+  const { isAuthenticated } = useAuthStore();
+  const [wishlistedItems, setWishlistedItems] = useState(new Set());
   
   // Filters from URL
   const category = searchParams.get('category') || '';
@@ -81,6 +85,15 @@ const Shop = () => {
     fetchProducts();
   }, [searchParams]);
 
+  // Fetch wishlist when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchWishlist();
+    } else {
+      setWishlistedItems(new Set());
+    }
+  }, [isAuthenticated]);
+
   const fetchProducts = async () => {
     setLoading(true);
     try {
@@ -107,6 +120,21 @@ const Shop = () => {
       toast.error('Failed to load products');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchWishlist = async () => {
+    try {
+      const response = await client.get('/users/wishlist');
+      if (response.data.success) {
+        const wishlist = response.data.data.wishlist;
+        const productIds = new Set(
+          wishlist?.items?.map(item => item.product.id) || []
+        );
+        setWishlistedItems(productIds);
+      }
+    } catch (error) {
+      console.log('Could not fetch wishlist:', error);
     }
   };
 
@@ -148,7 +176,6 @@ const Shop = () => {
     setAddingToCart(prev => ({ ...prev, [product.id]: true }));
     
     try {
-      // Add to local cart store
       addItem({
         id: product.id,
         name: product.name,
@@ -167,17 +194,32 @@ const Shop = () => {
     }
   };
 
-  const handleAddToWishlist = async (productId) => {
+  const handleToggleWishlist = async (productId, isCurrentlyWishlisted) => {
+    if (!isAuthenticated) {
+      toast.error('Please login to use wishlist');
+      navigate('/login');
+      return;
+    }
+
     try {
-      await client.post(`/users/wishlist/${productId}`);
-      toast.success('Added to wishlist!');
-    } catch (error) {
-      if (error.response?.status === 401) {
-        toast.error('Please login to add to wishlist');
-        navigate('/login');
+      if (isCurrentlyWishlisted) {
+        // Remove from wishlist
+        await client.delete(`/users/wishlist/${productId}`);
+        setWishlistedItems(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(productId);
+          return newSet;
+        });
+        toast.success('Removed from wishlist');
       } else {
-        toast.error(error.response?.data?.message || 'Failed to add to wishlist');
+        // Add to wishlist
+        await client.post(`/users/wishlist/${productId}`);
+        setWishlistedItems(prev => new Set([...prev, productId]));
+        toast.success('Added to wishlist!');
       }
+    } catch (error) {
+      console.error('Wishlist error:', error);
+      toast.error(error.response?.data?.message || 'Failed to update wishlist');
     }
   };
 
@@ -373,8 +415,9 @@ const Shop = () => {
                         product={product}
                         viewMode={viewMode}
                         onAddToCart={handleAddToCart}
-                        onAddToWishlist={handleAddToWishlist}
+                        onToggleWishlist={handleToggleWishlist}
                         isAddingToCart={addingToCart[product.id]}
+                        isWishlisted={wishlistedItems.has(product.id)}
                       />
                     ))}
                   </div>
@@ -538,7 +581,7 @@ const Shop = () => {
   );
 };
 
-const ProductCard = ({ product, viewMode, onAddToCart, onAddToWishlist, isAddingToCart }) => {
+const ProductCard = ({ product, viewMode, onAddToCart, onToggleWishlist, isAddingToCart, isWishlisted }) => {
   const navigate = useNavigate();
 
   const discount = product.compareAtPrice && product.compareAtPrice > product.price
@@ -598,11 +641,19 @@ const ProductCard = ({ product, viewMode, onAddToCart, onAddToWishlist, isAdding
         
         <div className="flex flex-col gap-2">
           <button
-            onClick={() => onAddToWishlist(product.id)}
-            className="p-2 border border-brown-200 rounded-lg hover:bg-terracotta-50 hover:border-terracotta-200 transition-colors"
-            aria-label="Add to wishlist"
+            onClick={() => onToggleWishlist(product.id, isWishlisted)}
+            className={`p-2 border rounded-lg transition-all ${
+              isWishlisted
+                ? 'border-red-500 bg-red-50 text-red-600'
+                : 'border-brown-200 hover:bg-terracotta-50 hover:border-terracotta-200'
+            }`}
+            aria-label={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
           >
-            <Heart className="w-5 h-5" />
+            <Heart 
+              className={`w-5 h-5 transition-all ${
+                isWishlisted ? 'fill-red-500' : ''
+              }`}
+            />
           </button>
           <button
             onClick={() => onAddToCart(product)}
@@ -645,12 +696,20 @@ const ProductCard = ({ product, viewMode, onAddToCart, onAddToWishlist, isAdding
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onAddToWishlist(product.id);
+            onToggleWishlist(product.id, isWishlisted);
           }}
-          className="absolute top-3 right-3 p-2 bg-white rounded-full shadow-md hover:bg-terracotta-50 hover:text-terracotta-600 transition-colors"
-          aria-label="Add to wishlist"
+          className={`absolute top-3 right-3 p-2 rounded-full shadow-md transition-all duration-200 ${
+            isWishlisted
+              ? 'bg-red-50 text-red-600 scale-110'
+              : 'bg-white hover:bg-terracotta-50 hover:text-terracotta-600'
+          }`}
+          aria-label={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
         >
-          <Heart className="w-5 h-5" />
+          <Heart 
+            className={`w-5 h-5 transition-all ${
+              isWishlisted ? 'fill-red-500' : ''
+            }`}
+          />
         </button>
       </div>
       

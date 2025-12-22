@@ -1,5 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
+import { useAuthStore } from './store/authStore';
+import { useCartStore } from './store/cartStore';
 
 // Layouts
 import MainLayout from './layouts/MainLayout';
@@ -33,38 +35,61 @@ const PageLoader = () => (
   </div>
 );
 
+// Cart Sync Component - Handles cart synchronization on auth changes
+const CartSync = () => {
+  const { user, isAuthenticated } = useAuthStore();
+  const { syncCart, logout: logoutCart } = useCartStore();
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      // Sync cart when user logs in or app loads with authenticated user
+      syncCart(user.id);
+    } else {
+      // Clear cart on logout
+      logoutCart();
+    }
+  }, [isAuthenticated, user?.id, syncCart, logoutCart]);
+
+  return null;
+};
+
 function App() {
   return (
-    <Suspense fallback={<PageLoader />}>
-      <Routes>
-        {/* Public Routes */}
-        <Route path="/" element={<MainLayout />}>
-          <Route index element={<Home />} />
-          <Route path="shop" element={<Shop />} />
-          <Route path="product/:id" element={<ProductDetail />} />
-          <Route path="cart" element={<Cart />} />
-          <Route path="checkout" element={<Checkout />} />
-          <Route path="login" element={<Login />} />
-          <Route path="register" element={<Register />} />
-          <Route path="about" element={<About />} />
-          <Route path="contact" element={<Contact />} />
-          
-          {/* Protected User Routes */}
-          <Route path="profile" element={<Profile />} />
-          <Route path="orders" element={<Orders />} />
-          <Route path="orders/:id" element={<OrderDetail />} />
-          <Route path="wishlist" element={<Wishlist />} />
-        </Route>
+    <>
+      {/* Cart Synchronization Component */}
+      <CartSync />
+      
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/" element={<MainLayout />}>
+            <Route index element={<Home />} />
+            <Route path="shop" element={<Shop />} />
+            <Route path="product/:id" element={<ProductDetail />} />
+            <Route path="cart" element={<Cart />} />
+            <Route path="checkout" element={<Checkout />} />
+            <Route path="login" element={<Login />} />
+            <Route path="register" element={<Register />} />
+            <Route path="about" element={<About />} />
+            <Route path="contact" element={<Contact />} />
+            
+            {/* Protected User Routes */}
+            <Route path="profile" element={<Profile />} />
+            <Route path="orders" element={<Orders />} />
+            <Route path="orders/:id" element={<OrderDetail />} />
+            <Route path="wishlist" element={<Wishlist />} />
+          </Route>
 
-        {/* Admin Routes */}
-        <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<AdminDashboard />} />
-          <Route path="products" element={<AdminProducts />} />
-          <Route path="orders" element={<AdminOrders />} />
-          <Route path="users" element={<AdminUsers />} />
-        </Route>
-      </Routes>
-    </Suspense>
+          {/* Admin Routes */}
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="products" element={<AdminProducts />} />
+            <Route path="orders" element={<AdminOrders />} />
+            <Route path="users" element={<AdminUsers />} />
+          </Route>
+        </Routes>
+      </Suspense>
+    </>
   );
 }
 
