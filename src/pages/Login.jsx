@@ -54,43 +54,48 @@ const Login = () => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+  e.preventDefault();
+  
+  if (!validate()) return;
+  
+  setLoading(true);
+  
+  try {
+    const response = await client.post('/auth/login', formData);
     
-    if (!validate()) return;
-    
-    setLoading(true);
-    
-    try {
-      const response = await client.post('/auth/login', formData);
+    if (response.data.success) {
+      const { user, accessToken } = response.data.data;
       
-      if (response.data.success) {
-        const { user, accessToken } = response.data.data;
-        
-        // Save to auth store (which also saves to localStorage)
-        login(user, accessToken);
-        
-        toast.success('Login successful!');
-        
-        // Redirect to previous page or home
+      // Save to auth store (which also saves to localStorage)
+      login(user, accessToken);
+      
+      toast.success(`Welcome back, ${user.firstName}!`);
+      
+      // Redirect based on user role
+      if (user.role === 'ADMIN') {
+        navigate('/admin', { replace: true });
+      } else {
+        // Regular users: redirect to previous page or home
         navigate(from, { replace: true });
       }
-    } catch (error) {
-      console.error('Login error:', error);
-      const message = error.response?.data?.message || 'Login failed. Please try again.';
-      toast.error(message);
-      
-      // Set field-specific errors if available
-      if (error.response?.data?.errors) {
-        const fieldErrors = {};
-        error.response.data.errors.forEach(err => {
-          fieldErrors[err.field] = err.message;
-        });
-        setErrors(fieldErrors);
-      }
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (error) {
+    console.error('Login error:', error);
+    const message = error.response?.data?.message || 'Login failed. Please try again.';
+    toast.error(message);
+    
+    // Set field-specific errors if available
+    if (error.response?.data?.errors) {
+      const fieldErrors = {};
+      error.response.data.errors.forEach(err => {
+        fieldErrors[err.field] = err.message;
+      });
+      setErrors(fieldErrors);
+    }
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <Section className="min-h-screen flex items-center justify-center bg-gradient-to-br from-cream-100 via-cream-50 to-terracotta-50">

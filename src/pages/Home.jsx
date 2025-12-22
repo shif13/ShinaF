@@ -66,7 +66,7 @@ const Home = () => {
                 <ShoppingBag className="w-6 h-6 text-terracotta-600" />
               </div>
               <h3 className="text-lg font-semibold mb-2">Easy Returns</h3>
-              <p className="text-brown-600 text-sm">30-day return policy</p>
+              <p className="text-brown-600 text-sm">15-day return policy</p>
             </div>
           </div>
         </Container>
