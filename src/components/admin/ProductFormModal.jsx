@@ -75,107 +75,71 @@ const ProductFormModal = ({ product, onClose }) => {
     setFormData(prev => ({ ...prev, [field]: array }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
 
-    try {
-      const submitData = new FormData();
-      
-      // Append basic text fields
-      submitData.append('name', formData.name);
-      submitData.append('description', formData.description);
-      submitData.append('category', formData.category);
-      submitData.append('subcategory', formData.subcategory);
-      submitData.append('price', formData.price);
-      submitData.append('stock', formData.stock);
-      submitData.append('featured', formData.featured);
-      
-      // Append optional fields
-      if (formData.compareAtPrice) {
-        submitData.append('compareAtPrice', formData.compareAtPrice);
-      }
-
-      // Append arrays as JSON strings
-      // In ProductFormModal.jsx handleSubmit function, replace this:
-if (formData.sizes && formData.sizes.length > 0) {
-  submitData.append('sizes', JSON.stringify(formData.sizes));
-}
-
-// With this:
-if (formData.sizes && formData.sizes.length > 0) {
-  formData.sizes.forEach(size => {
-    submitData.append('sizes[]', size);
-  });
-}
-
-// Same for colors:
-if (formData.colors && formData.colors.length > 0) {
-  formData.colors.forEach(color => {
-    submitData.append('colors[]', color);
-  });
-}
-
-// Same for tags:
-if (formData.tags && formData.tags.length > 0) {
-  formData.tags.forEach(tag => {
-    submitData.append('tags[]', tag);
-  });
-}
-      
-      if (formData.colors && formData.colors.length > 0) {
-        submitData.append('colors', JSON.stringify(formData.colors));
-      }
-      
-      if (formData.tags && formData.tags.length > 0) {
-        submitData.append('tags', JSON.stringify(formData.tags));
-      }
-
-      // Append image files
-      imageFiles.forEach(file => {
-        submitData.append('images', file);
-      });
-
-      // Debug: Log FormData contents
-      console.log('FormData contents:');
-      for (let pair of submitData.entries()) {
-        console.log(pair[0] + ': ' + pair[1]);
-      }
-
-      if (product) {
-        // Update existing product
-        await client.put(`/admin/products/${product.id}`, submitData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        toast.success('Product updated successfully!');
-      } else {
-        // Create new product
-        await client.post('/admin/products', submitData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        toast.success('Product created successfully!');
-      }
-
-      onClose();
-    } catch (error) {
-      console.error('Error submitting product:', error);
-      console.error('Error response:', error.response?.data);
-      
-      // Show detailed error message
-      const errorMessage = error.response?.data?.message || 
-                          error.response?.data?.errors?.[0]?.message ||
-                          'Failed to save product';
-      
-      toast.error(errorMessage);
-      
-      // Log validation errors if any
-      if (error.response?.data?.errors) {
-        console.error('Validation errors:', error.response.data.errors);
-      }
-    } finally {
-      setLoading(false);
+  try {
+    const submitData = new FormData();
+    
+    // Append text fields
+    submitData.append('name', formData.name);
+    submitData.append('description', formData.description);
+    submitData.append('category', formData.category);
+    submitData.append('subcategory', formData.subcategory);
+    submitData.append('price', formData.price);
+    submitData.append('stock', formData.stock);
+    submitData.append('featured', formData.featured);
+    
+    if (formData.compareAtPrice) {
+      submitData.append('compareAtPrice', formData.compareAtPrice);
     }
-  };
+
+    // Append arrays properly - one item at a time
+    if (formData.sizes && formData.sizes.length > 0) {
+      formData.sizes.forEach(size => {
+        submitData.append('sizes[]', size);
+      });
+    }
+
+    if (formData.colors && formData.colors.length > 0) {
+      formData.colors.forEach(color => {
+        submitData.append('colors[]', color);
+      });
+    }
+
+    if (formData.tags && formData.tags.length > 0) {
+      formData.tags.forEach(tag => {
+        submitData.append('tags[]', tag);
+      });
+    }
+
+    // Append image files
+    imageFiles.forEach(file => {
+      submitData.append('images', file);
+    });
+
+    // Submit
+    if (product) {
+      await client.put(`/admin/products/${product.id}`, submitData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success('Product updated successfully!');
+    } else {
+      await client.post('/admin/products', submitData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success('Product created successfully!');
+    }
+
+    onClose();
+  } catch (error) {
+    console.error('Error:', error);
+    toast.error(error.response?.data?.message || 'Failed to save product');
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <>
