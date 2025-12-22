@@ -82,19 +82,65 @@ const ProductFormModal = ({ product, onClose }) => {
     try {
       const submitData = new FormData();
       
-      // Append text fields
-      Object.keys(formData).forEach(key => {
-        if (Array.isArray(formData[key])) {
-          submitData.append(key, JSON.stringify(formData[key]));
-        } else {
-          submitData.append(key, formData[key]);
-        }
-      });
+      // Append basic text fields
+      submitData.append('name', formData.name);
+      submitData.append('description', formData.description);
+      submitData.append('category', formData.category);
+      submitData.append('subcategory', formData.subcategory);
+      submitData.append('price', formData.price);
+      submitData.append('stock', formData.stock);
+      submitData.append('featured', formData.featured);
+      
+      // Append optional fields
+      if (formData.compareAtPrice) {
+        submitData.append('compareAtPrice', formData.compareAtPrice);
+      }
+
+      // Append arrays as JSON strings
+      // In ProductFormModal.jsx handleSubmit function, replace this:
+if (formData.sizes && formData.sizes.length > 0) {
+  submitData.append('sizes', JSON.stringify(formData.sizes));
+}
+
+// With this:
+if (formData.sizes && formData.sizes.length > 0) {
+  formData.sizes.forEach(size => {
+    submitData.append('sizes[]', size);
+  });
+}
+
+// Same for colors:
+if (formData.colors && formData.colors.length > 0) {
+  formData.colors.forEach(color => {
+    submitData.append('colors[]', color);
+  });
+}
+
+// Same for tags:
+if (formData.tags && formData.tags.length > 0) {
+  formData.tags.forEach(tag => {
+    submitData.append('tags[]', tag);
+  });
+}
+      
+      if (formData.colors && formData.colors.length > 0) {
+        submitData.append('colors', JSON.stringify(formData.colors));
+      }
+      
+      if (formData.tags && formData.tags.length > 0) {
+        submitData.append('tags', JSON.stringify(formData.tags));
+      }
 
       // Append image files
       imageFiles.forEach(file => {
         submitData.append('images', file);
       });
+
+      // Debug: Log FormData contents
+      console.log('FormData contents:');
+      for (let pair of submitData.entries()) {
+        console.log(pair[0] + ': ' + pair[1]);
+      }
 
       if (product) {
         // Update existing product
@@ -112,8 +158,20 @@ const ProductFormModal = ({ product, onClose }) => {
 
       onClose();
     } catch (error) {
-      console.error('Error:', error);
-      toast.error(error.response?.data?.message || 'Failed to save product');
+      console.error('Error submitting product:', error);
+      console.error('Error response:', error.response?.data);
+      
+      // Show detailed error message
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.errors?.[0]?.message ||
+                          'Failed to save product';
+      
+      toast.error(errorMessage);
+      
+      // Log validation errors if any
+      if (error.response?.data?.errors) {
+        console.error('Validation errors:', error.response.data.errors);
+      }
     } finally {
       setLoading(false);
     }
@@ -138,7 +196,9 @@ const ProductFormModal = ({ product, onClose }) => {
           <div className="space-y-6">
             {/* Images */}
             <div>
-              <label className="block text-sm font-medium text-brown-700 mb-3">Product Images</label>
+              <label className="block text-sm font-medium text-brown-700 mb-3">
+                Product Images {!product && <span className="text-red-500">*</span>}
+              </label>
               <div className="grid grid-cols-4 gap-4 mb-4">
                 {images.map((img, index) => (
                   <div key={index} className="relative aspect-square bg-cream-100 rounded-lg overflow-hidden">
@@ -155,7 +215,7 @@ const ProductFormModal = ({ product, onClose }) => {
               </div>
               <label className="flex items-center justify-center gap-2 px-4 py-8 border-2 border-dashed border-brown-300 rounded-lg hover:bg-cream-50 cursor-pointer transition-colors">
                 <Upload className="w-5 h-5 text-brown-600" />
-                <span className="text-brown-600">Upload Images</span>
+                <span className="text-brown-600">Upload Images (Max 5)</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -164,34 +224,34 @@ const ProductFormModal = ({ product, onClose }) => {
                   className="hidden"
                 />
               </label>
+              <p className="text-xs text-brown-500 mt-2">
+                {!product && 'At least one image is required. '}Maximum 5 images, 5MB each (JPEG, PNG, GIF, WebP)
+              </p>
             </div>
 
             {/* Name & Description */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               <Input
                 label="Product Name"
                 name="name"
                 value={formData.name}
                 onChange={handleChange}
+                placeholder="e.g., Elegant Silk Saree"
                 required
-              />
-              <Input
-                label="SKU"
-                name="sku"
-                value={formData.sku}
-                onChange={handleChange}
-                helperText="Will be auto-generated if left empty"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-brown-700 mb-2">Description</label>
+              <label className="block text-sm font-medium text-brown-700 mb-2">
+                Description <span className="text-red-500">*</span>
+              </label>
               <textarea
                 name="description"
                 value={formData.description}
                 onChange={handleChange}
                 rows="4"
                 className="w-full px-4 py-3 border border-brown-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta-500"
+                placeholder="Detailed product description..."
                 required
               />
             </div>
@@ -199,12 +259,15 @@ const ProductFormModal = ({ product, onClose }) => {
             {/* Category & Subcategory */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-brown-700 mb-2">Category</label>
+                <label className="block text-sm font-medium text-brown-700 mb-2">
+                  Category <span className="text-red-500">*</span>
+                </label>
                 <select
                   name="category"
                   value={formData.category}
                   onChange={handleChange}
                   className="w-full px-4 py-3 border border-brown-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta-500"
+                  required
                 >
                   <option value="CLOTHING">Clothing</option>
                   <option value="FOOTWEAR">Footwear</option>
@@ -214,12 +277,15 @@ const ProductFormModal = ({ product, onClose }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-brown-700 mb-2">Subcategory</label>
+                <label className="block text-sm font-medium text-brown-700 mb-2">
+                  Subcategory <span className="text-red-500">*</span>
+                </label>
                 <select
                   name="subcategory"
                   value={formData.subcategory}
                   onChange={handleChange}
                   className="w-full px-4 py-3 border border-brown-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-terracotta-500"
+                  required
                 >
                   <option value="WOMEN">Women</option>
                   <option value="MEN">Men</option>
@@ -238,6 +304,9 @@ const ProductFormModal = ({ product, onClose }) => {
                 name="price"
                 value={formData.price}
                 onChange={handleChange}
+                placeholder="999"
+                min="0"
+                step="0.01"
                 required
               />
               <Input
@@ -246,6 +315,9 @@ const ProductFormModal = ({ product, onClose }) => {
                 name="compareAtPrice"
                 value={formData.compareAtPrice}
                 onChange={handleChange}
+                placeholder="1499"
+                min="0"
+                step="0.01"
                 helperText="Original price before discount"
               />
               <Input
@@ -254,6 +326,8 @@ const ProductFormModal = ({ product, onClose }) => {
                 name="stock"
                 value={formData.stock}
                 onChange={handleChange}
+                placeholder="50"
+                min="0"
                 required
               />
             </div>
@@ -266,6 +340,7 @@ const ProductFormModal = ({ product, onClose }) => {
                 value={formData.sizes.join(', ')}
                 onChange={(e) => handleArrayInput('sizes', e.target.value)}
                 placeholder="S, M, L, XL"
+                helperText="Optional. Leave empty if not applicable"
               />
               <Input
                 label="Colors (comma-separated)"
@@ -273,6 +348,7 @@ const ProductFormModal = ({ product, onClose }) => {
                 value={formData.colors.join(', ')}
                 onChange={(e) => handleArrayInput('colors', e.target.value)}
                 placeholder="Red, Blue, Green"
+                helperText="Optional. Leave empty if not applicable"
               />
             </div>
 
@@ -283,6 +359,7 @@ const ProductFormModal = ({ product, onClose }) => {
               value={formData.tags.join(', ')}
               onChange={(e) => handleArrayInput('tags', e.target.value)}
               placeholder="summer, casual, trending"
+              helperText="Optional. Used for search and filtering"
             />
 
             {/* Featured */}
