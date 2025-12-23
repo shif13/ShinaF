@@ -1,8 +1,12 @@
+// ============================================
+// FILE: src/pages/Checkout.jsx - CARD PAYMENT ONLY (SIMPLE & CLEAN)
+// ============================================
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements } from '@stripe/react-stripe-js';
 import { 
-  CreditCard, Smartphone, Building2, Wallet, 
-  MapPin, Plus, Check, Lock, ArrowLeft, Loader
+  MapPin, Plus, Lock, ArrowLeft, Loader, CreditCard, Package, Truck, Shield
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import client from '../api/client';
@@ -12,6 +16,10 @@ import Container from '../components/ui/Container';
 import Section from '../components/ui/Section';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
+import StripePayment from '../components/checkout/StripePayment';
+
+// Initialize Stripe
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
 const Checkout = () => {
   const navigate = useNavigate();
@@ -20,10 +28,14 @@ const Checkout = () => {
   
   const [addresses, setAddresses] = useState([]);
   const [selectedAddress, setSelectedAddress] = useState(null);
-  const [paymentMethod, setPaymentMethod] = useState('CARD');
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [placingOrder, setPlacingOrder] = useState(false);
+  
+  // Stripe states
+  const [clientSecret, setClientSecret] = useState('');
+  const [orderId, setOrderId] = useState('');
+  const [showStripeForm, setShowStripeForm] = useState(false);
   
   const [newAddress, setNewAddress] = useState({
     firstName: user?.firstName || '',
@@ -61,7 +73,6 @@ const Checkout = () => {
         const addressList = response.data.data.addresses;
         setAddresses(addressList);
         
-        // Auto-select default address or first address
         const defaultAddr = addressList.find(addr => addr.isDefault);
         setSelectedAddress(defaultAddr || addressList[0] || null);
       }
@@ -91,7 +102,6 @@ const Checkout = () => {
         setShowAddressForm(false);
         fetchAddresses();
         
-        // Reset form
         setNewAddress({
           firstName: user?.firstName || '',
           lastName: user?.lastName || '',
@@ -116,40 +126,37 @@ const Checkout = () => {
       return;
     }
 
-    if (!paymentMethod) {
-      toast.error('Please select a payment method');
-      return;
-    }
-
     setPlacingOrder(true);
 
     try {
-      // Prepare order data
+      // Step 1: Create order
       const orderData = {
         items: items.map(item => ({
-          productId: item.id,
+          productId: item.product?._id || item.id || item.productId,
           quantity: item.quantity,
           size: item.size || null,
           color: item.color || null
         })),
         shippingAddress: selectedAddress,
-        paymentMethod: paymentMethod
+        paymentMethod: 'CARD' // Always CARD
       };
 
-      const response = await client.post('/orders', orderData);
+      const orderResponse = await client.post('/orders', orderData);
 
-      if (response.data.success) {
-        const order = response.data.data.order;
+      if (orderResponse.data.success) {
+        const order = orderResponse.data.data.order;
+        setOrderId(order.id);
         
-        // Clear cart
-        clearCart();
-        
-        toast.success('Order placed successfully!');
-        
-        // Redirect to order detail page
-        navigate(`/orders/${order.id}`, { 
-          state: { orderSuccess: true } 
+        // Step 2: Create Stripe payment intent
+        const paymentResponse = await client.post('/payment/create-intent', {
+          orderId: order.id
         });
+
+        if (paymentResponse.data.success) {
+          setClientSecret(paymentResponse.data.data.clientSecret);
+          setShowStripeForm(true);
+          toast.success('Please complete your payment');
+        }
       }
     } catch (error) {
       console.error('Error placing order:', error);
@@ -159,17 +166,36 @@ const Checkout = () => {
     }
   };
 
+  const handlePaymentSuccess = async (paymentIntent) => {
+    try {
+      // Verify payment with backend
+      await client.post('/payment/verify', {
+        paymentIntentId: paymentIntent.id,
+        orderId: orderId
+      });
+
+      toast.success('Payment successful!');
+      clearCart();
+      navigate(`/orders/${orderId}`, { 
+        state: { orderSuccess: true, paymentSuccess: true } 
+      });
+    } catch (error) {
+      console.error('Error verifying payment:', error);
+      toast.error('Payment verification failed');
+    }
+  };
+
+  const handlePaymentError = (error) => {
+    console.error('Payment error:', error);
+    toast.error('Payment failed. Please try again.');
+    setShowStripeForm(false);
+    setClientSecret('');
+  };
+
   const subtotal = getTotal();
   const shipping = subtotal >= 1000 ? 0 : 50;
   const tax = subtotal * 0.18;
   const total = subtotal + shipping + tax;
-
-  const paymentMethods = [
-    { id: 'CARD', name: 'Credit/Debit Card', icon: CreditCard, description: 'Visa, Mastercard, RuPay' },
-    { id: 'UPI', name: 'UPI', icon: Smartphone, description: 'Google Pay, PhonePe, Paytm' },
-    { id: 'NETBANKING', name: 'Net Banking', icon: Building2, description: 'All major banks' },
-    { id: 'WALLET', name: 'Wallet', icon: Wallet, description: 'Paytm, Mobikwik, Amazon Pay' }
-  ];
 
   if (loading) {
     return (
@@ -178,6 +204,54 @@ const Checkout = () => {
           <Loader className="w-12 h-12 animate-spin text-terracotta-600 mx-auto mb-4" />
           <p className="text-brown-600">Loading checkout...</p>
         </div>
+      </Section>
+    );
+  }
+
+  // If showing Stripe payment form
+  if (showStripeForm && clientSecret) {
+    return (
+      <Section>
+        <Container>
+          <div className="max-w-2xl mx-auto">
+            <button
+              onClick={() => {
+                setShowStripeForm(false);
+                setClientSecret('');
+              }}
+              className="flex items-center gap-2 text-brown-600 hover:text-brown-900 mb-6"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span>Back to checkout</span>
+            </button>
+
+            <div className="bg-white rounded-lg border-2 border-brown-200 p-6 md:p-8">
+              <div className="mb-6">
+                <h2 className="text-2xl font-display font-bold text-brown-900 mb-2">
+                  Complete Payment
+                </h2>
+                <p className="text-brown-600">
+                  Secure card payment powered by Stripe
+                </p>
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800 flex items-center gap-2">
+                    <Lock className="w-4 h-4" />
+                    Your card details are encrypted and never stored on our servers
+                  </p>
+                </div>
+              </div>
+
+              <Elements stripe={stripePromise} options={{ clientSecret }}>
+                <StripePayment
+                  amount={total}
+                  orderId={orderId}
+                  onSuccess={handlePaymentSuccess}
+                  onError={handlePaymentError}
+                />
+              </Elements>
+            </div>
+          </div>
+        </Container>
       </Section>
     );
   }
@@ -324,7 +398,6 @@ const Checkout = () => {
                     </div>
                   </form>
                 ) : (
-                  /* Address List */
                   <div className="space-y-3">
                     {addresses.length === 0 ? (
                       <div className="text-center py-8 text-brown-600">
@@ -376,9 +449,9 @@ const Checkout = () => {
                 )}
               </div>
 
-              {/* Payment Method Section */}
+              {/* Payment Method Info */}
               <div className="bg-white rounded-lg border-2 border-brown-200 p-6">
-                <div className="flex items-center gap-3 mb-6">
+                <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 rounded-full bg-terracotta-100 flex items-center justify-center">
                     <CreditCard className="w-5 h-5 text-terracotta-600" />
                   </div>
@@ -386,42 +459,25 @@ const Checkout = () => {
                     <h2 className="text-xl font-display font-bold text-brown-900">
                       Payment Method
                     </h2>
-                    <p className="text-sm text-brown-600">Select your preferred payment method</p>
+                    <p className="text-sm text-brown-600">Secure card payment via Stripe</p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {paymentMethods.map((method) => {
-                    const Icon = method.icon;
-                    return (
-                      <label
-                        key={method.id}
-                        className={`block p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                          paymentMethod === method.id
-                            ? 'border-terracotta-600 bg-terracotta-50'
-                            : 'border-brown-200 hover:border-brown-300 bg-white'
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <input
-                            type="radio"
-                            name="payment"
-                            value={method.id}
-                            checked={paymentMethod === method.id}
-                            onChange={(e) => setPaymentMethod(e.target.value)}
-                            className="mt-1 w-4 h-4 text-terracotta-600"
-                          />
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Icon className="w-5 h-5 text-brown-700" />
-                              <p className="font-semibold text-brown-900">{method.name}</p>
-                            </div>
-                            <p className="text-xs text-brown-600">{method.description}</p>
-                          </div>
-                        </div>
-                      </label>
-                    );
-                  })}
+                <div className="p-4 bg-cream-50 rounded-lg border border-brown-200">
+                  <div className="flex items-center gap-3 mb-3">
+                    <CreditCard className="w-6 h-6 text-brown-700" />
+                    <div>
+                      <p className="font-semibold text-brown-900">Card Payment</p>
+                      <p className="text-xs text-brown-600">Visa, Mastercard, RuPay, Debit/Credit Cards</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 text-xs text-blue-800 bg-blue-50 p-3 rounded-lg border border-blue-200">
+                    <Lock className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <p>
+                      Your card details are encrypted and processed securely by Stripe. 
+                      We never store your card information on our servers.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -429,28 +485,29 @@ const Checkout = () => {
             {/* Order Summary - Sticky */}
             <div className="lg:col-span-1">
               <div className="bg-white rounded-lg border-2 border-brown-200 p-6 lg:sticky lg:top-24 shadow-sm">
-                <h2 className="text-xl font-display font-bold text-brown-900 mb-6">
+                <h2 className="text-xl font-display font-bold text-brown-900 mb-6 flex items-center gap-2">
+                  <Package className="w-5 h-5" />
                   Order Summary
                 </h2>
 
                 {/* Items */}
                 <div className="space-y-3 mb-6 max-h-64 overflow-y-auto scrollbar-thin">
                   {items.map((item) => (
-                    <div key={`${item.id}-${item.size}`} className="flex gap-3">
+                    <div key={`${item.product?._id || item.id}-${item.size || ''}`} className="flex gap-3">
                       <img
-                        src={item.images?.[0]}
-                        alt={item.name}
+                        src={item.product?.images?.[0] || item.images?.[0] || '/placeholder.jpg'}
+                        alt={item.product?.name || item.name || 'Product'}
                         className="w-16 h-16 rounded-lg object-cover bg-cream-100"
                       />
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-sm text-brown-900 line-clamp-1">
-                          {item.name}
+                          {item.product?.name || item.name || 'Product'}
                         </p>
                         <p className="text-xs text-brown-600">
                           Qty: {item.quantity} {item.size && `• ${item.size}`}
                         </p>
                         <p className="text-sm font-semibold text-terracotta-600">
-                          ₹{(item.price * item.quantity).toLocaleString('en-IN')}
+                          ₹{((item.product?.price || item.price || 0) * item.quantity).toLocaleString('en-IN')}
                         </p>
                       </div>
                     </div>
@@ -466,13 +523,22 @@ const Checkout = () => {
                   </div>
 
                   <div className="flex justify-between text-brown-700">
-                    <span>Shipping</span>
+                    <span className="flex items-center gap-1">
+                      <Truck className="w-4 h-4" />
+                      Shipping
+                    </span>
                     {shipping === 0 ? (
                       <span className="font-semibold text-green-600">FREE</span>
                     ) : (
                       <span className="font-semibold">₹{shipping.toFixed(2)}</span>
                     )}
                   </div>
+
+                  {shipping > 0 && subtotal < 1000 && (
+                    <p className="text-xs text-brown-600 bg-green-50 p-2 rounded">
+                      Add ₹{(1000 - subtotal).toLocaleString('en-IN')} more for free shipping! 🚚
+                    </p>
+                  )}
 
                   <div className="flex justify-between text-brown-700">
                     <span>Tax (GST 18%)</span>
@@ -500,12 +566,12 @@ const Checkout = () => {
                   isLoading={placingOrder}
                   leftIcon={<Lock className="w-5 h-5" />}
                 >
-                  {placingOrder ? 'Placing Order...' : 'Place Order'}
+                  {placingOrder ? 'Processing...' : 'Proceed to Payment'}
                 </Button>
 
                 <div className="mt-4 flex items-center justify-center gap-2 text-xs text-brown-500">
-                  <Lock className="w-3 h-3" />
-                  <span>Secure checkout powered by Stripe</span>
+                  <Shield className="w-3 h-3" />
+                  <span>Secure checkout • PCI DSS Compliant</span>
                 </div>
               </div>
             </div>
