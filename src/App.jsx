@@ -1,3 +1,4 @@
+// src/App.jsx - CORRECTED VERSION
 import { Routes, Route } from 'react-router-dom';
 import { Suspense, lazy, useEffect } from 'react';
 import { useAuthStore } from './store/authStore';
@@ -22,6 +23,17 @@ const Wishlist = lazy(() => import('./pages/Wishlist'));
 const About = lazy(() => import('./pages/About'));
 const Contact = lazy(() => import('./pages/Contact'));
 
+// Payment Pages
+const PaymentSuccess = lazy(() => import('./pages/PaymentSuccess'));
+const PaymentFailed = lazy(() => import('./pages/PaymentFailed'));
+
+// Static Pages
+const TermsConditions = lazy(() => import('./pages/TermsConditions'));
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
+const ShippingPolicy = lazy(() => import('./pages/ShippingPolicy'));
+const ReturnPolicy = lazy(() => import('./pages/ReturnPolicy'));
+const FAQ = lazy(() => import('./pages/FAQ'));
+
 // Admin Pages
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
 const AdminProducts = lazy(() => import('./pages/admin/Products'));
@@ -42,10 +54,8 @@ const CartSync = () => {
 
   useEffect(() => {
     if (isAuthenticated && user) {
-      // Sync cart when user logs in or app loads with authenticated user
       syncCart(user.id);
     } else {
-      // Clear cart on logout
       logoutCart();
     }
   }, [isAuthenticated, user?.id, syncCart, logoutCart]);
@@ -72,6 +82,17 @@ function App() {
             <Route path="register" element={<Register />} />
             <Route path="about" element={<About />} />
             <Route path="contact" element={<Contact />} />
+            
+            {/* Payment Pages */}
+            <Route path="payment-success" element={<PaymentSuccess />} />
+            <Route path="payment-failed" element={<PaymentFailed />} />
+            
+            {/* Static Pages */}
+            <Route path="terms" element={<TermsConditions />} />
+            <Route path="privacy" element={<PrivacyPolicy />} />
+            <Route path="shipping" element={<ShippingPolicy />} />
+            <Route path="returns" element={<ReturnPolicy />} />
+            <Route path="faq" element={<FAQ />} />
             
             {/* Protected User Routes */}
             <Route path="profile" element={<Profile />} />
